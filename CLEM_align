@@ -1,0 +1,129 @@
+% align cryo and fluo beads with estimateGeometry by using four cryo images
+% update Nav file for serialEM
+% the input Nav file has to be converted into Windows Excel first.
+
+clear;
+close all;
+
+cd('/disk/grid3');
+
+% input
+square                 = ['S05';'S06';'S07';'S10';'S11';'S12'];
+fnFluoBesds_pre        = 'grid3_end_'; % flu beads on confocal camera 
+fnFluoBesds_post       = '_flipH_beads.mod'; 
+fnFluoVirus_pre        = 'grid3_end_'; % flu virus on confocal camera
+fnFluoVirus_post       = '_flipH_virus.mod';
+fnNav                  = 'XF287B_beadsOnly.xlsx';
+
+% output
+fnNavUpdated           = 'XF287B_updated_all.nav';
+
+
+% fnFluoBeadsMod         = 'grid3_end_S12_flipH_beads.mod'; % flu beads on confocal camera 
+% fnFluoVirusMod         = 'grid3_end_S12_flipH_virus.mod'; % flu virus on confocal camera
+% fnNav                  = 'XF287B_beadsOnly.xlsx';
+% S_n                    = 'S12';    % for example square 12  
+% 
+
+ % load beads coordinates from cryoEM
+[num,text,raw] = xlsread(fnNav);
+[rows, columns] = size(num);  
+
+% ouput old Nav files
+fid = fopen(fnNavUpdated,'w');
+formatS = '';
+for i = 1:1 
+    for j = 1:2
+        if isnan(num(i,j))  
+            Nav_updated1{j} = char(text(1,j));
+            formatS = [formatS,'%s\t'];
+        else
+            Nav_updated1{j} = num(1,j);  
+            if  ~mod(Nav_updated1{i,j},1)
+                formatS = [formatS,'%d\t'];
+            else
+                formatS = [formatS,'%.3f\t'];   
+            end
+        end       
+    end   
+    fprintf(fid,[formatS,'\n'], Nav_updated1{:});
+end
+
+formatS = '';
+for i = 1:1
+    for j = 1:74
+            Nav_updated2{j} = char(text(2,j)); 
+            formatS = [formatS,'%s\t'];
+    end   
+    fprintf(fid,[formatS,'\n'], Nav_updated2{:});
+end
+
+for i = 3:rows
+    formatS = '';
+    for j = 1:74
+        if isnan(num(i,j))  
+            Nav_updated3{j} = char(text(i,j));
+            formatS = [formatS,'%s\t'];
+        else
+            Nav_updated3{j} = num(i,j);  
+            if  ~mod(Nav_updated3{j},1)
+                formatS = [formatS,'%d\t'];
+            else
+                formatS = [formatS,'%.3f\t'];   
+            end
+        end       
+    end
+    fprintf(fid,[formatS,'\n'], Nav_updated3{:});
+end
+
+
+for k=1:size(square,1)
+    S_n = square(k,:);
+    fnFluoBeadsMod  = [fnFluoBesds_pre,S_n,fnFluoBesds_post];
+    fnFluoVirusMod  = [fnFluoVirus_pre,S_n,fnFluoVirus_post]; 
+% load flu coordinates for beads and virus
+modParticle1 = ImodModel(fnFluoBeadsMod);
+Pt1 = round(imodPoints2Index(getPoints(modParticle1,1)));
+FluoBeadsMod = Pt1(1:2,:);
+numBeads = length(FluoBeadsMod);
+
+modParticle2 = ImodModel(fnFluoVirusMod);
+Pt2=round(imodPoints2Index(getPoints(modParticle2,1)));
+FluoViursMod = Pt2(1:2,:);
+numVirus = length(FluoViursMod);
+
+indB = strmatch([S_n,'B'],text(:,12));
+CryoBeadsStage = num(indB,3:5);
+indB_1 = indB(1); % the index for the first bead
+
+% transfer ccordinate from fluo to cryo stage 
+t2 = estimateGeometricTransform(FluoBeadsMod',CryoBeadsStage(:,1:2),'similar');
+FluoViursModTrans = FluoViursMod'*t2.T(1:2,1:2) + repmat(t2.T(3,1:2),numVirus,1);
+
+    
+% output calculated virus coordinates
+for i = 1:numVirus
+    formatS = '';
+    for j = 1:74
+        if isnan(num(indB_1,j))  
+            Nav_updated4{j} = char(text(indB_1,j));
+            formatS = [formatS,'%s\t'];
+        else
+            Nav_updated4{j} = num(indB_1,j);  
+            if  ~mod(Nav_updated4{j},1)
+                formatS = [formatS,'%d\t'];
+            else
+                formatS = [formatS,'%.3f\t'];   
+            end
+        end       
+    end
+    Nav_updated4{1} = i;                           % label index
+    Nav_updated4{2} = 1;                           % color
+    Nav_updated4{3} = FluoViursModTrans(i,1);      % coordinates
+    Nav_updated4{4} = FluoViursModTrans(i,2);
+    Nav_updated4{12} = [S_n,'V',num2str(i)];       % S12V01    
+    fprintf(fid,[formatS,'\n'], Nav_updated4{:});
+end
+end
+
+fclose(fid);
